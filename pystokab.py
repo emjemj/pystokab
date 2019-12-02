@@ -84,7 +84,7 @@ class StokabAPIClient:
         }
 
         if littera:
-            params['littra'] = littra
+            params['littera'] = littera
 
         resp = self.get(path='/api/1.3/availability/getByAddress', params=params)
 
