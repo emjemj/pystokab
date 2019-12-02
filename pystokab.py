@@ -1,6 +1,9 @@
 import requests
 import time
 
+class StokabAPIException(Exception):
+    pass
+
 class StokabAPIClient:
 
     def __init__(self, client_id, scopes, secret, url):
@@ -61,7 +64,42 @@ class StokabAPIClient:
         return { 'Authorization': '{} {}'.format(self.token_type, self.token) }
 
     def get_point(self, point_id):
+        """ Fetch a point specified by its id """
         return Point(apiclient=self, point_id=point_id)
+
+    def get_points_by_realestate(self, realestate, estatesuffix=""):
+        """ Find points by realestate """
+        resp = self.get(path='/api/1.3/availability/getByEstate',
+                        params={'realestate': realestate.upper(), 'estatesuffix': estatesuffix })
+
+        return self.initialize_points(resp.json())
+
+    def get_points_by_address(self, city, street, number, littera=None):
+        """ Find points by street address """
+
+        params = {
+            'city': city,
+            'street': street,
+            'number': number,
+        }
+
+        if littera:
+            params['littra'] = littra
+
+        resp = self.get(path='/api/1.3/availability/getByAddress', params=params)
+
+        return self.initialize_points(resp.json())
+
+    def initialize_points(self, response):
+        if 'message' in response:
+            raise StokabAPIException(data['message'])
+
+        points = []
+        for point in response:
+            p = Point(apiclient=self, point_id=point['pointId'], data=point)
+            points.append(p)
+
+        return points
 
 class SimpleDataEntity:
 
@@ -70,6 +108,14 @@ class SimpleDataEntity:
 
     def __getattr__(self, key):
         return self.data[key]
+
+    def debug(self, indent=False):
+        fmt = '{}: {}'
+        if indent:
+            fmt = '\t{}: {}'
+
+        for key in self.data:
+            print(fmt.format(key, self.data[key]))
 
 class Address(SimpleDataEntity):
     """ Descries a street address """
@@ -97,7 +143,8 @@ class Coordinates:
         import pyproj
 
         projections = {
-                'RT90_2.5_GON_V_0:-15': 'epsg:3021'
+                'RT90_2.5_GON_V_0:-15': 'epsg:3021',
+                'SWEREF99 TM': 'epsg:3021',
         }
 
         source = pyproj.Proj(projections[data['projection']])
@@ -108,8 +155,15 @@ class Coordinates:
         self.longitude = res[1]
 
     def url(self):
+        """ generate google maps url for the coordinates """
 
         return 'https://google.com/maps/?q={},{}'.format(self.latitude, self.longitude)
+
+    def debug(self, indent=True):
+        if indent:
+            print('\t{}'.format(self.url()))
+        else:
+            print(self.url())
 
 class Point:
     """ Describes a point in the Stokab fiber network """
@@ -144,8 +198,24 @@ class Point:
         self.related_points = []
 
         for related in self.data['relatedPointIds']:
-            obj = Point(related['name'])
+            obj = Point(apiclient=self.apiclient, point_id=related['name'])
+            self.related_points.append(obj)
 
         self.point_info = PointInfo(self.data['pointInfo'])
 
-        print(self.point_info.aNode, self.point_info.oNode)
+    def debug(self):
+        print("--------------------------------------------------------")
+        print(self.point_id)
+        print("Address")
+        self.address.debug(indent=True)
+        print("Realestate")
+        self.realestate.debug(indent=True)
+        print("Coordinates")
+        self.coordinates.debug(indent=True)
+        print("District: {}".format(self.district))
+        print("City area: {}".format(self.city_area))
+        print("Fiber status: {}".format(self.fiber_status))
+        print("Point Info")
+        self.point_info.debug(indent=True)
+        print("Related points: {}".format([x.point_id for x in self.related_points]))
+        print("--------------------------------------------------------")
