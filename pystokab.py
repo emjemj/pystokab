@@ -101,6 +101,122 @@ class StokabAPIClient:
 
         return points
 
+    def get_framework_agreements(self):
+        """ Get a list of framework agreements """
+
+        resp = self.get(path='/api/1.3/frameworkAgreement')
+
+        agreements = []
+
+        for agreement in resp.json():
+            agreements.append(FrameworkAgreement(data=agreement))
+
+        return agreements
+
+    def get_invoice_groups(self):
+        """ Get a list of invoice groups """
+
+        resp = self.get(path='/api/1.3/invoiceGroup')
+
+        groups = []
+
+        for group in resp.json():
+            groups.append(InvoiceGroup(data=group))
+
+        return groups
+
+    def estimate(self, invoice_group_id, framework_agreement_id, from_point, to_point, customer_type, years, singles=0, pairs=0):
+        args = {
+            'invoiceGroupId': invoice_group_id,
+            'frameworkAgreementId': framework_agreement_id,
+            'from': { 'pointId': from_point },
+            'to': { 'pointId': to_point },
+            'customerType': customer_type,
+            'contractPeriodYears': years,
+            'noOfSingleFibers': singles,
+            'noOfFiberPairs': pairs
+        }
+
+        resp = self.post(path='/api/1.3/priceEstimate', json=args)
+
+
+        data = resp.json()[0]['products']
+
+
+        products = []
+
+        for product in data:
+            products.append(Product(product))
+
+        return ProductList(products)
+
+class ProductList:
+
+    def __init__(self, products=[]):
+        self.products = products
+
+    def __iter__(self):
+        for product in self.products:
+            yield product
+
+    def cheapest(self):
+        """ Find cheapest product """
+        cheapest = None
+        for product in self.products:
+
+            if not cheapest or product.total() < cheapest.total():
+                cheapest = product
+        return cheapest
+
+
+class Product:
+    """ Product """
+
+    def __init__(self, data):
+        self.product_id = data['productId']
+        self.name = data['name']
+        self.product_type = data['productType']
+        self.comment = data['comment']
+        self.price = Price(data['price'])
+
+    def total(self):
+        return self.price.total()
+
+class Price:
+    """ Price """
+
+    def __init__(self, data):
+        self.contract_period = data['contractPeriodYears']
+        self.otc = data['oneTimeFee']
+        self.mrc = data['monthlyFee']
+
+    def total(self):
+        """ Calculate total cost over the contract period """
+        return self.otc + (self.mrc * (self.contract_period * 12))
+
+    def spec(self):
+        """ Return a tuple containing otc and mrc """
+        return self.otc, self.mrc
+
+
+class InvoiceGroup:
+    """ Invoicegroup """
+
+    def __init__(self, data):
+        self.name = data['name']
+        self.client_number = data['clientNumber']
+        self.id = data['invoiceGroupId']
+        self.number = data['invoiceGroupNumber']
+
+class FrameworkAgreement:
+    """ Framework agreement (ramavtal) """
+
+    def __init__(self, data):
+        self.agreement_id = data['frameworkAgreementId']
+        self.name = data['name']
+        self.standard = data['isStandard']
+        self.system_id = data['masterSystemId']
+
 class SimpleDataEntity:
 
     def __init__(self, data):
